@@ -35,6 +35,7 @@ message("\n")
 
 #Add each LibreCAD component
 add_subdirectory("lckernel")
+add_subdirectory("lcopengl")
 add_subdirectory("lcUILua")
 add_subdirectory("lcadluascript")
 
