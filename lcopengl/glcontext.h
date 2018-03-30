@@ -16,11 +16,17 @@
 #define DLL_IMPORT_FUNC(retval, name, ...) \
     typedef GLAPIENTRY retval (*name ## _t) (__VA_ARGS__); \
     const name ## _t name = (name ## _t) import(#name)
-#define DLL_CHECK_EXT(extname, version) const bool extname = checkExtension(#name, version, true)
-#define DLL_COND_EXT(extname, version, cc) const bool extname = checkExtension(#name, version, cc)
-#define DLL_FAKE_EXT(extname, version) const bool extname = fakeExtension(#name, version, true)
-#define DLL_CFAKE_EXT(extname, version, cc) const bool extname = fakeExtension(#name, version, cc)
+
+#define DLL_CHECK_EXT(extname, ver) const bool extname = checkExtension(#extname, ver, true)
+
+#define DLL_COND_EXT(extname, version, cc) const bool extname = checkExtension(#extname, version, cc)
+
+#define DLL_FAKE_EXT(extname, version) const bool extname = fakeExtension(#extname, version, true)
+
+#define DLL_CFAKE_EXT(extname, version, cc) const bool extname = fakeExtension(#extname, version, cc)
+
 #define DLL_LIMIT(name) const int name = limit(GL_##name)
+
 class PRIVATE_API GLContext {
     public:
         static GLContext * create();
@@ -38,8 +44,8 @@ class PRIVATE_API GLContext {
         DLL_IMPORT_FUNC(void, glEnable, GLenum);
         DLL_IMPORT_FUNC(void, glDisable, GLenum);
         DLL_IMPORT_FUNC(const GLubyte*, glGetStringi,
-                        GLenum name​,
-                        GLuint index​);
+                        GLenum name,
+                        GLuint index);
         DLL_IMPORT_FUNC(void, glGetIntegerv,
                         GLenum pname,
                         GLint * value);
@@ -90,10 +96,6 @@ class PRIVATE_API GLContext {
                         GLboolean normalized,
                         GLsizei stride,
                         const GLvoid * pointer);
-        DLL_IMPORT_FUNC(void, glBindAttribLocation,
-                        GLuint program,
-                        GLuint index,
-                        const GLchar *name);
         DLL_IMPORT_FUNC(void, glVertexAttrib1f,
                         GLuint index,
                         GLfloat v0);
@@ -179,7 +181,7 @@ class PRIVATE_API GLContext {
                         GLenum access);
         DLL_IMPORT_FUNC(GLboolean, glUnmapBuffer,
                         GLenum target);
-        DLL_CHECK_EXT(vertex_buffer_object, 20);
+        DLL_CHECK_EXT(buffer_storage, 44);
         DLL_IMPORT_FUNC(void, glBufferStorage,
                         GLenum,
                         GLsizeiptr,
@@ -229,9 +231,6 @@ class PRIVATE_API GLContext {
         DLL_FAKE_EXT(blending, 20);
         DLL_IMPORT_FUNC(void, glBlendEquation,
                         GLenum mode);
-        DLL_IMPORT_FUNC(void, glBlendEquationSeparate,
-                        GLenum modeRGB,
-                        GLenum modeAlpha);
         DLL_CHECK_EXT(blend_equation_separate, 20);
         DLL_IMPORT_FUNC(void, glBlendEquationSeparate,
                         GLenum modeRGB,
@@ -327,46 +326,27 @@ class PRIVATE_API GLContext {
         //===texture storage======================
         DLL_CHECK_EXT(texture_storage, 42);
         DLL_IMPORT_FUNC(void, glTexStorage1D,
-                        enum target,
-                        sizei levels,
-                        enum internalformat,
-                        sizei width);
+                        GLenum target,
+                        GLsizei levels,
+                        GLenum internalformat,
+                        GLsizei width);
         DLL_IMPORT_FUNC(void, glTexStorage2D,
-                        enum target,
-                        sizei levels,
-                        enum internalformat,
-                        sizei width,
-                        sizei height);
+                        GLenum target,
+                        GLsizei levels,
+                        GLenum internalformat,
+                        GLsizei width,
+                        GLsizei height);
         DLL_IMPORT_FUNC(void, glTexStorage3D,
-                        enum target,
-                        sizei levels,
-                        enum internalformat,
-                        sizei width,
-                        sizei height,
-                        sizei depth);
-        //===clear texture====================
-        DLL_CHECK_EXT(clear_texture, 44);
-        DLL_IMPORT_FUNC(void, glClearTexImage,
-                        GLuint texture,
-                        GLint level,
-                        GLenum format,
-                        GLenum type,
-                        const GLvoid * data);
-        DLL_IMPORT_FUNC(void, glClearTexSubImage,
-                        GLuint texture,
-                        GLint level,
-                        GLint xoffset,
-                        GLint yoffset,
-                        GLint zoffset,
+                        GLenum target,
+                        GLsizei levels,
+                        GLenum internalformat,
                         GLsizei width,
                         GLsizei height,
-                        GLsizei depth,
-                        GLenum format,
-                        GLenum type,
-                        const GLvoid * data);
+                        GLsizei depth);
+
         //===texture buffer range=============
         DLL_CHECK_EXT(texture_buffer_range, 43);
-        DLL_IMPOTR_FUNC(void, glTexBufferRange,
+        DLL_IMPORT_FUNC(void, glTexBufferRange,
                         GLenum target,
                         GLenum internalformat,
                         GLuint buffer,
@@ -691,18 +671,18 @@ class PRIVATE_API GLContext {
         //===conditional render==============
         DLL_CHECK_EXT(occlusion_query, 20);
         DLL_IMPORT_FUNC(void, glBeginQuery,
-                        GLenum target​,
-                        GLuint id​);
+                        GLenum target,
+                        GLuint id);
         DLL_IMPORT_FUNC(void, glEndQuery,
-                        GLenum target​);
+                        GLenum target);
         DLL_IMPORT_FUNC(void, glGetQueryObjectiv,
-                        GLuint id​,
-                        GLenum pname​,
-                        GLint * params​);
+                        GLuint id,
+                        GLenum pname,
+                        GLint * params);
         DLL_IMPORT_FUNC(void, glGetQueryObjectuiv,
-                        GLuint id​,
-                        GLenum pname​,
-                        GLuint * params​);
+                        GLuint id,
+                        GLenum pname,
+                        GLuint * params);
         DLL_CHECK_EXT(conditional_render, 20);
         DLL_IMPORT_FUNC(void, glBeginConditionalRender,
                         GLuint id,
@@ -774,8 +754,8 @@ class PRIVATE_API GLContext {
 
 private:
     GLContext();//you cannot instantiate this class this way
-    bool  checkExtention(const char*ext, int version, bool cc);
-    bool  fakeExtention(const char*ext, int version, bool cc);
+    bool  checkExtension(const char*ext, int version, bool cc);
+    bool  fakeExtension(const char*ext, int version, bool cc);
     void *import(const char*);
     int   limit(GLenum value);
     unsigned mVersion;

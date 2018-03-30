@@ -43,6 +43,7 @@ GLContext * GLContext::create()
             }
             mContext = new QOpenGLContext();
             mContext->setFormat(format);
+            mContext->setShareContext(QOpenGLContext::globalShareContext());
             if (!mContext->create() ||
                 !mContext->makeCurrent(mSurface))
             {
@@ -97,12 +98,12 @@ GLContext::~GLContext()
 
     qt_was_initialized = state::UNKNOWN;
 }
-bool   GLContext::fakeExtention(const char *ext, int version, bool cc) {
+bool   GLContext::fakeExtension(const char *ext, int version, bool cc) {
     bool found = cc & (version <= gl_required_version);
     gl_extension_enabled = found;
     return found;
 }
-bool   GLContext::checkExtention(const char * ext, int version, bool cc) {
+bool   GLContext::checkExtension(const char * ext, int version, bool cc) {
     bool found = false;
     //don't even try to resolve if not needed
     if (cc && (version <= gl_required_version)) {
