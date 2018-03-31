@@ -12,22 +12,24 @@ set (lcopengl_VERSION_MAJOR 1)
 set (lcopengl_VERSION_MINOR 0)
 
 set(opengl_srcs
-#glcairo.cpp
-#glcairo_p.cpp
+glcairocontext.cpp
+glcairoitem.cpp
+glcairosurface.cpp
+glcairoutil.cpp
 #glcairodraw.cpp
 #glcairopath.cpp
-#glcairosurface.cpp
 glcontext.cpp
 )
 
 # HEADER FILES
 set(opengl_hdrs
 common.h
-#glcairo.h
-#glcairo_p.h
+glcairocontext.h
+glcairoitem.h
+glcairosurface.h
+glcairoutil.h
 #glcairodraw.h
 #glcairopath.h
-#glcairosurface.h
 glcontext.h
 )
 
@@ -55,8 +57,7 @@ else()
         pkg_check_modules(GLIB glib-2.0)
         pkg_check_modules(X11 x11)
 
-        message("FOUND GL=${GL_FOUND} GLU=${GLU_FOUND} GDK=${GDK_FOUND} GLIB=${GLIB_FOUND} X11=${X11_FOUND}")
-        if (GDK_FOUND AND GLIB_FOUND AND NOT ("3.22" VERSION_GREATER ${GDK_VERSION}))
+        if (GDK_FOUND AND GLIB_FOUND)
             include_directories(${GLIB_INCLUDE_DIRS})
             include_directories(${GDK_INCLUDE_DIRS})
             set(noqt_srcs glcontext_gdk.cpp)

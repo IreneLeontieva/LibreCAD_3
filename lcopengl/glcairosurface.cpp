@@ -273,8 +273,21 @@ GLCairoSurface::GLCairoSurface(GLCairoSurface *other,
 }
 GLCairoSurface::~GLCairoSurface()
 {
-    auto gl = owner->gl();
+    auto gl = getGL();
 
-
+    if (mFramebuffer)
+        gl->glDeleteFramebuffers(1, &mFramebuffer);
+    if (mTexture)
+        gl->glDeleteTextures(1, &mFramebuffer);
+    if (mPixelCopySync) gl->glDeleteSync(mPixelCopySync);
+    if (mPixelBuffer) {
+        if (mMappedPixelBuffer) {
+            gl->glBindBuffer(GL_PIXEL_UNPACK_BUFFER, mPixelBuffer);
+            gl->glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+            gl->glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+        }
+        gl->glDeleteBuffers(1, &mPixelBuffer);
+    }
+    if (mProxySurface) mProxySurface->unref();
 }
 

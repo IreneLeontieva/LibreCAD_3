@@ -17,10 +17,16 @@
 #endif
 
 #define DISABLE_COPY(xxx) \
-xxx(const xxx&) = delete;\
-xxx& operator =(const xxx&) = delete;\
-xxx(xxx&&) = delete;\
-xxx& operator =(xxx&&) = delete;
+    xxx(const xxx&) = delete;\
+    xxx& operator =(const xxx&) = delete;
+
+#define DISABLE_MOVE(xxx) \
+    xxx(xxx&&) = delete;\
+    xxx& operator =(xxx&&) = delete;
+
+#define MOVABLE(xxx) \
+    xxx(xxx&&);\
+    xxx& operator =(xxx&&);
 
 #define WARNING(xxxx) \
     std::cerr<<(xxxx)<<std::endl;
