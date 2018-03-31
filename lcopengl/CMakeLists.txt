@@ -56,7 +56,15 @@ else()
         pkg_check_modules(X11 x11)
 
         message("FOUND GL=${GL_FOUND} GLU=${GLU_FOUND} GDK=${GDK_FOUND} GLIB=${GLIB_FOUND} X11=${X11_FOUND}")
+        #GDK may actually be built without GL support
         if (GDK_FOUND AND GLIB_FOUND)
+            # Main include dir
+            find_file(GDK_USABLE
+                      gdk/gdkglcontext.h
+                      PATHS ${GDK_INCLUDE_DIRS})
+        endif()
+        message("FOUND GL=${GL_FOUND} GLU=${GLU_FOUND} GDK=${GDK_USABLE} X11=${X11_FOUND}")
+        if (GDK_USABLE)
             include_directories(${GLIB_INCLUDE_DIRS})
             include_directories(${GDK_INCLUDE_DIRS})
             set(noqt_srcs glcontext_gdk.cpp)
@@ -90,3 +98,10 @@ target_link_libraries(lcopengl_qt
     Qt5::Core
     Qt5::Gui
     Qt5::OpenGL)
+
+#trick to show all files in project tree
+file(GLOB ALL_SRC_HEADER_FILES "*.h")
+file(GLOB ALL_TEST_HEADER_FILES "*.cpp")
+add_library(dummy_target_with_all_headers EXCLUDE_FROM_ALL ${ALL_SRC_HEADER_FILES} ${ALL_TEST_HEADER_FILES})
+target_link_libraries(dummy_target_with_all_headers)
+set_target_properties(dummy_target_with_all_headers PROPERTIES LINKER_LANGUAGE CXX)

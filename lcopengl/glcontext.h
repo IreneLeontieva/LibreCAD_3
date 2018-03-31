@@ -32,7 +32,8 @@ class PRIVATE_API GLContext {
         static GLContext * create();
         ~GLContext();
 
-        unsigned version() const { return mVersion; }
+        bool makeCurrent();
+        void release();
 
         //UTILITY FUNCTIONS
         void clearError();
@@ -56,6 +57,9 @@ class PRIVATE_API GLContext {
         DLL_LIMIT(MAX_TEXTURE_SIZE);
         DLL_LIMIT(MAX_TEXTURE_STACK_DEPTH);
         //more CRITICAL FUNCTIONS
+        DLL_IMPORT_FUNC(void, glPixelStorei,
+                        GLenum pname,
+                        GLint param);
         DLL_IMPORT_FUNC(void, glDepthFunc,
                         GLenum func);
         DLL_IMPORT_FUNC(void, glViewport,
@@ -311,6 +315,36 @@ class PRIVATE_API GLContext {
                         GLenum format,
                         GLenum type,
                         const GLvoid * data);
+        DLL_IMPORT_FUNC(void, glTexImage1D,
+                        GLenum target,
+                        GLint level,
+                        GLint internalFormat,
+                        GLsizei width,
+                        GLint border,
+                        GLenum format,
+                        GLenum type, const
+                        GLvoid *pixels);
+        DLL_IMPORT_FUNC(void, glTexImage2D,
+                        GLenum target,
+                        GLint level,
+                        GLint internalFormat,
+                        GLsizei width,
+                        GLsizei height,
+                        GLint border,
+                        GLenum format,
+                        GLenum type,
+                        const GLvoid * data);
+        DLL_IMPORT_FUNC(void, glTexImage3D,
+                        GLenum target,
+                        GLint level,
+                        GLint internalFormat,
+                        GLsizei width,
+                        GLsizei height,
+                        GLsizei depth,
+                        GLint border,
+                        GLenum format,
+                        GLenum type,
+                        const GLvoid *pixels);
         //===integer texture======================
         DLL_CHECK_EXT(texture_integer, 20);
         DLL_IMPORT_FUNC(void, glClearColorIiEXT,
@@ -665,7 +699,7 @@ class PRIVATE_API GLContext {
                         GLsizei maxdrawcount,
                         GLsizei stride);
         //===primitive restart===============
-        DLL_CHECK_EXT(primitive_restart, 31);
+        DLL_CHECK_EXT(primitive_restart, 20);
         DLL_IMPORT_FUNC(void, glPrimitiveRestartIndex,
                         GLuint index);
         //===conditional render==============
@@ -683,12 +717,11 @@ class PRIVATE_API GLContext {
                         GLuint id,
                         GLenum pname,
                         GLuint * params);
-        DLL_CHECK_EXT(conditional_render, 20);
+        DLL_COND_EXT(conditional_render, 20, occlusion_query);
         DLL_IMPORT_FUNC(void, glBeginConditionalRender,
                         GLuint id,
                         GLenum mode);
         DLL_IMPORT_FUNC(void, glEndConditionalRender);
-
         //===texture barriers================
         //nvidia driver behaves like shit if not used properly
         DLL_CHECK_EXT(texture_barrier, 45);
@@ -754,11 +787,14 @@ class PRIVATE_API GLContext {
 
 private:
     GLContext();//you cannot instantiate this class this way
+    static void beginJourney(int version);
+    static int  completeJourney();
     bool  checkExtension(const char*ext, int version, bool cc);
     bool  fakeExtension(const char*ext, int version, bool cc);
     void *import(const char*);
     int   limit(GLenum value);
-    unsigned mVersion;
+    void * getProcAddress(const char * name);
+    static const int * gl_versions;
 };
 
 #undef DLL_IMPORT_FUNC
