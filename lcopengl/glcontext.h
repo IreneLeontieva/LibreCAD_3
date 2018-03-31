@@ -30,14 +30,16 @@
 class PRIVATE_API GLContext {
     public:
         static GLContext * create();
+        DISABLE_COPY(GLContext)
+        MOVABLE(GLContext)
         ~GLContext();
 
         bool makeCurrent();
         void release();
 
         //UTILITY FUNCTIONS
-        void clearError();
-        GLenum checkError();
+        void clearError() const;
+        GLenum checkError() const;
         //CRITICAL FUNCTIONS: we can't do anything without them
         DLL_IMPORT_FUNC(GLenum, glGetError);
         DLL_IMPORT_FUNC(void, glFinish);
@@ -80,6 +82,11 @@ class PRIVATE_API GLContext {
                         GLclampd depth);
         DLL_IMPORT_FUNC(void, glClearStencil,
                         GLint stencil);
+        DLL_IMPORT_FUNC(void, glScissor,
+                        GLint x,
+                        GLint y,
+                        GLsizei width,
+                        GLsizei height);
         //===sync objects===================
         DLL_CHECK_EXT(sync, 20);
         DLL_IMPORT_FUNC(GLsync, glFenceSync,
@@ -276,6 +283,16 @@ class PRIVATE_API GLContext {
                         GLint level);
         DLL_IMPORT_FUNC(GLenum, glCheckFramebufferStatus,
                         GLenum target);
+        DLL_IMPORT_FUNC(void, glReadPixels,
+                        GLint x,
+                        GLint y,
+                        GLsizei width,
+                        GLsizei height,
+                        GLenum format,
+                        GLenum type,
+                        GLvoid * data);
+        DLL_IMPORT_FUNC(void, glReadBuffer,
+                        GLenum mode);
         //===texture objects================
         DLL_FAKE_EXT(textures, 20);
         DLL_IMPORT_FUNC(void, glGenTextures,
@@ -324,6 +341,14 @@ class PRIVATE_API GLContext {
                         GLenum format,
                         GLenum type, const
                         GLvoid *pixels);
+        DLL_IMPORT_FUNC(void, glTexSubImage1D,
+                        GLenum target,
+                        GLint level,
+                        GLint xoffset,
+                        GLsizei width,
+                        GLenum format,
+                        GLenum type,
+                        const GLvoid * data);
         DLL_IMPORT_FUNC(void, glTexImage2D,
                         GLenum target,
                         GLint level,
@@ -331,6 +356,16 @@ class PRIVATE_API GLContext {
                         GLsizei width,
                         GLsizei height,
                         GLint border,
+                        GLenum format,
+                        GLenum type,
+                        const GLvoid * data);
+        DLL_IMPORT_FUNC(void, glTexSubImage2D,
+                        GLenum target,
+                        GLint level,
+                        GLint xoffset,
+                        GLint yoffset,
+                        GLsizei width,
+                        GLsizei height,
                         GLenum format,
                         GLenum type,
                         const GLvoid * data);
@@ -345,6 +380,18 @@ class PRIVATE_API GLContext {
                         GLenum format,
                         GLenum type,
                         const GLvoid *pixels);
+        DLL_IMPORT_FUNC(void, glTexSubImage3D,
+                        GLenum target,
+                        GLint level,
+                        GLint xoffset,
+                        GLint yoffset,
+                        GLint zoffset,
+                        GLsizei width,
+                        GLsizei height,
+                        GLsizei depth,
+                        GLenum format,
+                        GLenum type,
+                        const GLvoid * data);
         //===integer texture======================
         DLL_CHECK_EXT(texture_integer, 20);
         DLL_IMPORT_FUNC(void, glClearColorIiEXT,

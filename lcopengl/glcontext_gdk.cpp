@@ -20,6 +20,35 @@ static GdkWindow    * mWindow  = NULL;
 static GdkGLContext * mContext = NULL;
 static GLContext    * mFuncs   = NULL;
 
+GLContext::GLContext()
+{
+    assert(mFuncs = nullptr);
+    mFuncs = this;
+}
+GLContext::~GLContext()
+{
+    if (mFuncs == this) {
+        mFuncs = NULL;
+        if (mContext) {
+            g_object_unref(mContext);
+            mContext = NULL;
+        }
+        if (mWindow) {
+            gdk_window_destroy(mWindow);
+            mWindow  = NULL;
+        }
+        gdk_was_initialized = state::UNKNOWN;
+    }
+}
+GLContext::GLContext(GLContext && source) {
+    if (&source == mFuncs)
+        mFuncs = this;
+}
+GLContext& GLContext::operator =(GLContext&& source) {
+    if (&source == mFuncs)
+        mFuncs = this;
+    return *this;
+}
 GLContext * GLContext::create()
 {
     assert(mFuncs == nullptr);
@@ -124,26 +153,6 @@ GLContext * GLContext::create()
         }
     }
     return mFuncs;
-}
-
-GLContext::GLContext()
-{
-    assert(mFuncs = nullptr);
-    mFuncs = this;
-}
-GLContext::~GLContext()
-{
-    assert(mFuncs == this);
-    mFuncs = NULL;
-    if (mContext) {
-        g_object_unref(mContext);
-        mContext = NULL;
-    }
-    if (mWindow) {
-        gdk_window_destroy(mWindow);
-        mWindow  = NULL;
-    }
-    gdk_was_initialized = state::UNKNOWN;
 }
 
 bool GLContext::makeCurrent()

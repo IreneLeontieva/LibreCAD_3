@@ -16,6 +16,37 @@ static HWND           mWindow  = NULL;
 static HDC            mHDC     = NULL;
 static HGLRC          mGLRC    = NULL;
 static GLContext    * mFuncs   = NULL;
+
+GLContext::GLContext(GLContext && source) {
+    if (&source == mFuncs)
+        mFuncs = this;
+}
+GLContext& GLContext::operator =(GLContext&& source) {
+    if (&source == mFuncs)
+        mFuncs = this;
+    return *this;
+}
+GLContext::GLContext()
+{
+    assert(mFuncs = nullptr);
+    mFuncs = this;
+}
+GLContext::~GLContext()
+{
+    if (mFuncs == this) {
+        mFuncs = NULL;
+        if (mGLRC != NULL) {
+            wglMakeCurrent(mHDC, NULL);
+            wglDestroyContext(mGLRC);
+            mGLRC = NULL;
+        }
+        if (mWindow)
+            DestroyWindow(mWindow);
+        mHDC    = NULL;
+        mWindow = NULL;
+        w32_was_initialized = state::UNKNOWN;
+    }
+}
 GLContext * GLContext::create()
 {
     //we may be running in console mode, and gdk may be uninitialized
@@ -101,26 +132,6 @@ GLContext * GLContext::create()
         }
     }
     return mFuncs;
-}
-GLContext::GLContext()
-{
-    assert(mFuncs = nullptr);
-    mFuncs = this;
-}
-GLContext::~GLContext()
-{
-    assert(mFuncs == this);
-    mFuncs = NULL;
-    if (mGLRC != NULL) {
-        wglMakeCurrent(mHDC, NULL);
-        wglDestroyContext(mGLRC);
-        mGLRC = NULL;
-    }
-    if (mWindow)
-        DestroyWindow(mWindow);
-    mHDC    = NULL;
-    mWindow = NULL;
-    w32_was_initialized = state::UNKNOWN;
 }
 bool   GLContext::makeCurrent() {
     assert(mFuncs == this);

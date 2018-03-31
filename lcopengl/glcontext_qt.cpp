@@ -13,6 +13,34 @@ static QOffscreenSurface * mSurface = nullptr;
 static QOpenGLContext    * mContext = nullptr;
 static GLContext         * mFuncs    = nullptr;
 
+GLContext::GLContext(GLContext && source) {
+    if (&source == mFuncs)
+        mFuncs = this;
+}
+GLContext& GLContext::operator =(GLContext&& source) {
+    if (&source == mFuncs)
+        mFuncs = this;
+    return *this;
+}
+GLContext::GLContext()
+{
+    assert(mFuncs = nullptr);
+    mFuncs = this;
+}
+GLContext::~GLContext()
+{
+    if (mFuncs == this) {
+        mFuncs = NULL;
+
+        if (mContext) mContext->doneCurrent();
+        delete mContext;
+        mContext = nullptr;
+        delete mSurface;
+        mSurface = nullptr;
+
+        qt_was_initialized = state::UNKNOWN;
+    }
+}
 GLContext * GLContext::create()
 {
     //we may be running in console mode, and gdk may be uninitialized
@@ -81,24 +109,7 @@ GLContext * GLContext::create()
     }
     return mFuncs;
 }
-GLContext::GLContext()
-{
-    assert(mFuncs = nullptr);
-    mFuncs = this;
-}
-GLContext::~GLContext()
-{
-    assert(mFuncs == this);
-    mFuncs = NULL;
 
-    if (mContext) mContext->doneCurrent();
-    delete mContext;
-    mContext = nullptr;
-    delete mSurface;
-    mSurface = nullptr;
-
-    qt_was_initialized = state::UNKNOWN;
-}
 bool   GLContext::makeCurrent() {
     assert(mFuncs == this);
     assert(mContext != nullptr);

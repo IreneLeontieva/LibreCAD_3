@@ -12,6 +12,38 @@ static Display           * x11Display   = NULL;
 static Window              x11Window    = None;
 static GLXContext          x11Context   = NULL;
 static GLContext         * mFuncs    = nullptr;
+
+GLContext::GLContext(GLContext && source) {
+    if (&source == mFuncs)
+        mFuncs = this;
+}
+GLContext& GLContext::operator =(GLContext&& source) {
+    if (&source == mFuncs)
+        mFuncs = this;
+    return *this;
+}
+GLContext::GLContext()
+{
+    assert(mFuncs = nullptr);
+    mFuncs = this;
+}
+GLContext::~GLContext()
+{
+    if (mFuncs == this) {
+        mFuncs = NULL;
+
+        assert(x11Display != NULL);
+        glXMakeCurrent(x11Display, None, NULL);
+        if (x11Context != NULL)
+            glXDestroyContext(x11Display, x11Context);
+        x11Context = NULL;
+        if (x11Window != None)
+            XDestroyWindow(x11Display, x11Window);
+        x11Window = None;
+        x11_was_initialized = state::UNKNOWN;
+    }
+}
+
 GLContext * GLContext::create()
 {
     //prevent double-creation
@@ -110,26 +142,6 @@ GLContext * GLContext::create()
         }
     }
     return mFuncs;
-}
-GLContext::GLContext()
-{
-    assert(mFuncs = nullptr);
-    mFuncs = this;
-}
-GLContext::~GLContext()
-{
-    assert(mFuncs == this);
-    mFuncs = NULL;
-
-    assert(x11Display != NULL);
-    glXMakeCurrent(x11Display, None, NULL);
-    if (x11Context != NULL)
-        glXDestroyContext(x11Display, x11Context);
-    x11Context = NULL;
-    if (x11Window != None)
-        XDestroyWindow(x11Display, x11Window);
-    x11Window = None;
-    x11_was_initialized = state::UNKNOWN;
 }
 bool   GLContext::makeCurrent() {
     assert(mFuncs == this);

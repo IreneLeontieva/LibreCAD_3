@@ -14,12 +14,12 @@ int GLContext::limit(GLenum value) {
     if (checkError()) val = 0;
     return val;
 }
-void GLContext::clearError() {
+void GLContext::clearError() const {
     GLenum e = glGetError();
     while (e != GL_NO_ERROR)
         e = glGetError();
 }
-GLenum GLContext::checkError() {
+GLenum GLContext::checkError() const {
     GLenum e = glGetError();
     if (e != GL_NO_ERROR) {
         GLenum e1 = e;
