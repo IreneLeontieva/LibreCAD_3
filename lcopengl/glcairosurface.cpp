@@ -1,5 +1,6 @@
 #include "glcairosurface.h"
 #include "glcairoutil.h"
+#include "glcairodraw.h"
 #include <assert.h>
 #include <limits>
 
@@ -33,6 +34,7 @@ GLCairoSurface::GLCairoSurface(GLCairoContext *owner)
     , mContent(CAIRO_CONTENT_COLOR)
     , mPixelSize(1)
     , mProxySurface(nullptr)
+    , mFinalSurface(nullptr)
     , mTexture(0)
     , mPixelBuffer(0)
     , mPixelCopySync(NULL)
@@ -49,6 +51,7 @@ GLCairoSurface::GLCairoSurface(GLCairoContext *owner)
     mClipEnabled = false;
 
     mPendingCopyToTexture = false;
+    mPendingDraw          = nullptr;
 }
 GLCairoSurface::GLCairoSurface(GLCairoContext *owner,
                                cairo_format_t format,
@@ -209,35 +212,36 @@ GLCairoSurface::GLCairoSurface(GLCairoSurface *other,
         return;
     }
 
+    //there may be more proxy surfaces in chain
+    GLCairoSurface * ps = other;
     for(;;) {
-        if (other->mStatus != CAIRO_STATUS_SUCCESS) {
-            mStatus = other->mStatus;
+        if (ps->mStatus != CAIRO_STATUS_SUCCESS) {
+            mStatus = ps->mStatus;
             return;
         }
-        if (x2 > other->mWidth || y2 > other->mHeight) {
+        if (x2 > ps->mWidth || y2 > ps->mHeight) {
             mStatus = CAIRO_STATUS_INVALID_SIZE;
             return;
         }
-        //there may be more proxy surfaces in chain
-        if (!other->mProxySurface)
+        if (!ps->mProxySurface)
             break;
-        x1 += other->mClipX1;
-        x2 += other->mClipX1;
-        y1 += other->mClipY1;
-        y2 += other->mClipY1;
-        other = other->mProxySurface;
+        x1 += ps->mClipX1;
+        x2 += ps->mClipX1;
+        y1 += ps->mClipY1;
+        y2 += ps->mClipY1;
+        ps  = ps->mProxySurface;
     }
     //we do not support views of non-textures
-    if (!other->mTexture || !other->mFramebuffer) {
+    if (!ps->mTexture || !ps->mFramebuffer) {
         mStatus = CAIRO_STATUS_INVALID_VISUAL;
         return;
     }
 
     //final sanity check
-    assert (x1 < x2);
-    assert (y1 < y2);
-    assert (x2 <= other->mWidth);
-    assert (y2 <= other->mHeight);
+    if (x1 < x2 || y1 < y2 || x2 <= ps->mWidth || y2 <= ps->mHeight) {
+        mStatus = CAIRO_STATUS_DEVICE_ERROR;
+        return;
+    }
 
     GLuint pbo    = 0;
     GLsync sync   = NULL;
@@ -248,7 +252,7 @@ GLCairoSurface::GLCairoSurface(GLCairoSurface *other,
 
         gl->glGenBuffers(1, &pbo);
         if (pbo) {
-            unsigned datasize = (x2 - x1)*(y2 - y1)*other->mPixelSize;
+            unsigned datasize = (x2 - x1)*(y2 - y1)*ps->mPixelSize;
             gl->glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
             if (gl->buffer_storage)
                 gl->glBufferStorage(GL_PIXEL_PACK_BUFFER,
@@ -260,12 +264,12 @@ GLCairoSurface::GLCairoSurface(GLCairoSurface *other,
                                     GL_CLIENT_STORAGE_BIT);
             else
                 gl->glBufferData(GL_PIXEL_PACK_BUFFER, datasize, NULL, GL_STREAM_COPY);
-            gl->glBindFramebuffer(GL_READ_FRAMEBUFFER, other->mFramebuffer);
+            gl->glBindFramebuffer(GL_READ_FRAMEBUFFER, ps->mFramebuffer);
             gl->glReadBuffer(GL_COLOR_ATTACHMENT0);
             gl->glPixelStorei(GL_PACK_ALIGNMENT, mPixelSize);
             gl->glPixelStorei(GL_PACK_ROW_LENGTH, mWidth*mPixelSize);
             gl->glReadPixels(x1, y1, x2-x1, y2-y1,
-                             other->mOformat, other->mComponentType,
+                             ps->mOformat, ps->mComponentType,
                              NULL);
             gl->glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
             sync = gl->glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
@@ -283,18 +287,21 @@ GLCairoSurface::GLCairoSurface(GLCairoSurface *other,
     mStatus        = CAIRO_STATUS_SUCCESS;
     mWidth         = x2 - x1;
     mHeight        = y2 - y1;
-    mFormat        = other->mFormat;
-    mContent       = other->mContent;
-    mPixelSize     = other->mPixelSize;
-    mIformat       = other->mIformat;
-    mOformat       = other->mOformat;
-    mComponentType = other->mComponentType;
+    mFormat        = ps->mFormat;
+    mContent       = ps->mContent;
+    mPixelSize     = ps->mPixelSize;
+    mIformat       = ps->mIformat;
+    mOformat       = ps->mOformat;
+    mComponentType = ps->mComponentType;
     mProxySurface  = other;
+    mFinalSurface  = ps;
     mPixelBuffer   = pbo;
     mMappedPixelBuffer = mapped;
     mPixelCopySync = sync;
-    mXOffset       = x1;
-    mYOffset       = y1;
+    mXOffset       = x1 + other->mXOffset;
+    mYOffset       = y1 + other->mYOffset;
+    mXScale        = other->mXScale;
+    mYScale        = other->mYScale;
     mClipX1        = x1;
     mClipY1        = y1;
     mClipX2        = x2;
@@ -323,6 +330,10 @@ void GLCairoSurface::finish() {
         gl->glDeleteBuffers(1, &mPixelBuffer);
         mPixelBuffer = 0;
     }
+    if (mPendingDraw) {
+        mPendingDraw->release();
+        mPendingDraw = nullptr;
+    }
     if (mFramebuffer) {
         gl->glDeleteFramebuffers(1, &mFramebuffer);
         mFramebuffer = 0;
@@ -336,6 +347,110 @@ void GLCairoSurface::finish() {
         mProxySurface = nullptr;
     }
     mStatus = CAIRO_STATUS_SURFACE_FINISHED;
+}
+void GLCairoSurface::setDeviceOffset(double x, double y) 
+{
+    mXOffset = x;
+    mYOffset = y;
+}
+void GLCairoSurface::setDeviceScale(double x, double y)
+{
+    mXScale = x;
+    mYScale = y;
+}
+void GLCairoSurface::getDeviceOffset(double *x, double *y) 
+{
+    *x = mXOffset;
+    *y = mYOffset;
+}
+void GLCairoSurface::getDeviceScale(double *x, double *y)
+{
+    *x = mXScale;
+    *y = mYScale;
+}
+cairo_status_t GLCairoSurface::createDraw(GLCairoDraw **pDraw) {
+    if (mStatus != CAIRO_STATUS_SUCCESS)
+        return mStatus;
+    if (mPendingDraw)
+        return CAIRO_STATUS_DEVICE_ERROR;
+
+    GLCairoSurface * texsrc = this;
+    while (texsrc->mProxySurface) {
+        texsrc = texsrc->mProxySurface;
+        if (texsrc->mPendingDraw) {
+            mPendingDraw = new GLCairoDraw(texsrc->mPendingDraw,
+                                           mClipX1,
+                                           mClipY1,
+                                           mClipX2,
+                                           mClipY2);
+            break;
+        }
+    }
+    if (!mPendingDraw) {
+        assert(texsrc == mFinalSurface || texsrc == this);
+        if (!texsrc->mTexture || !texsrc->mFramebuffer)
+            return CAIRO_STATUS_DEVICE_ERROR;
+
+        texsrc->mPendingDraw = new GLCairoDraw(this,
+                                               texsrc->mTexture,
+                                               mClipX1,
+                                               mClipY1,
+                                               mClipX2,
+                                               mClipY2);
+
+        if (texsrc != this) {
+            mPendingDraw = new GLCairoDraw(texsrc->mPendingDraw,
+                                           mClipX1,
+                                           mClipY1,
+                                           mClipX2,
+                                           mClipY2);
+        }
+    }
+    mPendingDraw->setDeviceTransform(mXOffset,
+                                     mYOffset,
+                                     mXScale,
+                                     mYScale);
+    *pDraw = mPendingDraw;
+    return mPendingDraw->status();
+}
+void GLCairoSurface::flush() {
+    if (mPendingDraw) {
+        mPendingDraw->flush();
+    }
+}
+GLuint GLCairoSurface::getTexture() {
+    if (!mTexture)
+        return 0;
+
+    //wait for pending io operations
+    waitForSurface(true);
+
+    //wait for pending draw call
+    //note: it is possible to call getTexture while
+    //drawing is still done. results of such operations
+    //are undefined: we will try to not to crash,
+    //but that's all you can expect
+    if (mPendingDraw) {
+        if (!mPendingDraw->finish()) return 0;
+        mPendingDraw = nullptr;
+    }
+    return mTexture;
+}
+GLuint GLCairoSurface::getTextureBox(int &x1,
+                                     int &y1,
+                                     int &x2,
+                                     int &y2)
+{
+    GLuint tex = mTexture;
+    if (!tex && mFinalSurface)
+        tex = mFinalSurface->getTexture();
+    if (tex) {
+        x1 = mClipX1;
+        y1 = mClipY1;
+        x2 = mClipX2;
+        y2 = mClipY2;
+    }
+    return tex;
 }
 void GLCairoSurface::waitForSurface(bool full) {
     auto gl = getGL();
@@ -351,9 +466,9 @@ void GLCairoSurface::waitForSurface(bool full) {
     if (mPendingCopyToTexture) {
         GLuint texture = mTexture;
         if (!texture) {
-            assert(mProxySurface);
-            assert(mProxySurface->mTexture);
-            texture = mProxySurface->mTexture;
+            assert(mFinalSurface);
+            assert(mFinalSurface->mTexture);
+            texture = mFinalSurface->mTexture;
         }
         gl->glPixelStorei(GL_PACK_ALIGNMENT, mPixelSize);
         gl->glPixelStorei(GL_PACK_ROW_LENGTH, mWidth*mPixelSize);
@@ -371,7 +486,6 @@ void GLCairoSurface::waitForSurface(bool full) {
         else
             gl->glFinish();
     }
-
 }
 unsigned char * GLCairoSurface::get_data()
 {
@@ -380,13 +494,15 @@ unsigned char * GLCairoSurface::get_data()
 
     //if there was a pending pixel copy, wait for the surface
     waitForSurface(true);
+    if (mPendingDraw) {
+        mPendingDraw->finish();
+        mPendingDraw = nullptr;
+    }
 
     auto gl = getGL();
     gl->clearError();
 
     unsigned datasize = mWidth*mHeight*mPixelSize;
-
-
     if (!mPixelBuffer)
     {
         if (!mTexture || !mFramebuffer)
