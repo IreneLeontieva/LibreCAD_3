@@ -51,20 +51,12 @@ else()
     include_directories(${GLU_INCLUDE_DIRS})
     link_directories(${GLU_LIBRARY_DIRS})
     if (GL_FOUND AND GLU_FOUND)
-        pkg_check_modules(GDK gdk-3.0)
+        pkg_check_modules(GDK gdk-3.0>=3.22)
         pkg_check_modules(GLIB glib-2.0)
         pkg_check_modules(X11 x11)
 
         message("FOUND GL=${GL_FOUND} GLU=${GLU_FOUND} GDK=${GDK_FOUND} GLIB=${GLIB_FOUND} X11=${X11_FOUND}")
-        #GDK may actually be built without GL support
-        if (GDK_FOUND AND GLIB_FOUND)
-            # Main include dir
-            find_file(GDK_USABLE
-                      gdk/gdkglcontext.h
-                      PATHS ${GDK_INCLUDE_DIRS})
-        endif()
-        message("FOUND GL=${GL_FOUND} GLU=${GLU_FOUND} GDK=${GDK_USABLE} X11=${X11_FOUND}")
-        if (GDK_USABLE)
+        if (GDK_FOUND AND GLIB_FOUND AND NOT ("3.22" VERSION_GREATER ${GDK_VERSION}))
             include_directories(${GLIB_INCLUDE_DIRS})
             include_directories(${GDK_INCLUDE_DIRS})
             set(noqt_srcs glcontext_gdk.cpp)

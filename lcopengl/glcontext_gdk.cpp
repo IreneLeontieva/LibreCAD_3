@@ -76,38 +76,34 @@ GLContext * GLContext::create()
             gdk_window_hide(mWindow);
 
             //try to create a context
-            auto version_count = sizeof(gl_versions)/sizeof(gl_versions[0]);
-
-            GLContext * result = nullptr;
             GError      * error  = NULL;
-            for(auto i = versions_count; i; --i)
-            {
-                gdk_gl_context_set_required_version(mContext, gl_versions[i]/10, gl_versions[i]%10);
-                gdk_gl_context_set_forward_compatible(mContext, FALSE);
-                mContext = gdk_window_create_gl_context(mWindow, &error);
-                if (mContext && gdk_gl_context_realize(mContext, &error)) {
-                    assert(error == NULL);
+            mContext = gdk_window_create_gl_context(mWindow, &error);
+            if (mContext) {
+                auto versions_count = sizeof(gl_versions)/sizeof(gl_versions[0]);
+                for(auto i = versions_count; i; --i)
+                {
+                    gdk_gl_context_set_required_version(mContext, gl_versions[i]/10, gl_versions[i]%10);
+                    gdk_gl_context_set_forward_compatible(mContext, FALSE);
+                    gdk_gl_context_set_use_es(gl_versions[i] < 30 ? TRUE:FALSE);
+                    if (gdk_gl_context_realize(mContext, &error)) {
+                        assert(error == NULL);
 
-                    //try to bind all functions
-                    gl_required_version  = gl_versions[i];
-                    gl_extension_enabled = true;
-                    gdk_gl_context_make_current(mContext);
-                    GLContext * f = new GLContext();
-                    gdk_gl_context_clear_current();
+                        //try to bind all functions
+                        gl_required_version  = gl_versions[i];
+                        gl_extension_enabled = true;
+                        gdk_gl_context_make_current(mContext);
+                        GLContext * f = new GLContext();
+                        gdk_gl_context_clear_current();
 
-                    if (gl_required_version == gl_versions[i]) {
-                        assert(mFuncs == f);
-                        gdk_was_initialized = state::SUCCESS;
-                        break;
+                        if (gl_required_version == gl_versions[i]) {
+                            assert(mFuncs == f);
+                            gdk_was_initialized = state::SUCCESS;
+                            break;
+                        }
                     }
-                    //we failed to bind something, try another version
-                    g_object_unref(mContext);
-                    mContext = NULL;
-                    continue;
+                    g_clear_error(&error);
+                    error = NULL;
                 }
-                //FIXME: log error?
-                g_clear_error(&error);
-                error = NULL;
             }
         } while(0);
         //safety belts - if something gone wrong, clean up stuff
