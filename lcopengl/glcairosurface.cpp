@@ -47,6 +47,8 @@ GLCairoSurface::GLCairoSurface(GLCairoContext *owner)
     mClipX2  = 0;
     mClipY2  = 0;
     mClipEnabled = false;
+
+    mPendingCopyToTexture = false;
 }
 GLCairoSurface::GLCairoSurface(GLCairoContext *owner,
                                cairo_format_t format,
@@ -310,7 +312,7 @@ void GLCairoSurface::finish() {
         return;
     auto gl = getGL();
 
-    waitForSurface();
+    waitForSurface(true);
     if (mPixelBuffer) {
         if (mMappedPixelBuffer) {
             gl->glBindBuffer(GL_PIXEL_UNPACK_BUFFER, mPixelBuffer);
@@ -335,9 +337,9 @@ void GLCairoSurface::finish() {
     }
     mStatus = CAIRO_STATUS_SURFACE_FINISHED;
 }
-void GLCairoSurface::waitForSurface() {
+void GLCairoSurface::waitForSurface(bool full) {
+    auto gl = getGL();
     if (mPixelCopySync) {
-        auto gl = getGL();
         GLenum e = gl->glClientWaitSync(mPixelCopySync,
                                         GL_SYNC_FLUSH_COMMANDS_BIT,
                                         std::numeric_limits<GLuint64>::max()/2);
@@ -346,16 +348,44 @@ void GLCairoSurface::waitForSurface() {
         gl->glDeleteSync(mPixelCopySync);
         mPixelCopySync = NULL;
     }
+    if (mPendingCopyToTexture) {
+        GLuint texture = mTexture;
+        if (!texture) {
+            assert(mProxySurface);
+            assert(mProxySurface->mTexture);
+            texture = mProxySurface->mTexture;
+        }
+        gl->glPixelStorei(GL_PACK_ALIGNMENT, mPixelSize);
+        gl->glPixelStorei(GL_PACK_ROW_LENGTH, mWidth*mPixelSize);
+        gl->glBindTexture(GL_TEXTURE_2D, texture);
+        gl->glTexSubImage2D(GL_TEXTURE_2D, 0,
+                            mClipX1, mClipY1,
+                            mClipX2 - mClipX1, mClipY2 - mClipY1,
+                            mOformat, mComponentType,
+                            NULL);
+        gl->glBindTexture(GL_TEXTURE_2D, 0);
+
+        mPendingCopyToTexture = false;
+        if (!full)
+            mPixelCopySync = gl->glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+        else
+            gl->glFinish();
+    }
+
 }
 unsigned char * GLCairoSurface::get_data()
 {
     if (mStatus != CAIRO_STATUS_SUCCESS)
         return nullptr;
 
+    //if there was a pending pixel copy, wait for the surface
+    waitForSurface(true);
+
     auto gl = getGL();
     gl->clearError();
 
     unsigned datasize = mWidth*mHeight*mPixelSize;
+
 
     if (!mPixelBuffer)
     {
@@ -395,13 +425,7 @@ unsigned char * GLCairoSurface::get_data()
         mPixelBuffer = pbo;
     }
 
-    if (gl->checkError()) {
-        return nullptr;
-    }
-
-    //if there was a pending pixel copy, wait for the surface
-    waitForSurface();
-
+    waitForSurface(false);
     if (gl->checkError()) {
         return nullptr;
     }
@@ -415,7 +439,7 @@ unsigned char * GLCairoSurface::get_data()
                                                       GL_MAP_READ_BIT|
                                                       GL_MAP_WRITE_BIT|
                                                       GL_MAP_PERSISTENT_BIT|
-                                                      GL_MAP_UNSYNCHRONIZED_BIT|
+                                                      //GL_MAP_UNSYNCHRONIZED_BIT|
                                                       GL_MAP_FLUSH_EXPLICIT_BIT);
         } else {
             mMappedPixelBuffer = gl->glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_WRITE);
@@ -435,7 +459,7 @@ void GLCairoSurface::mark_dirty()
     unsigned datasize = mWidth*mHeight*mPixelSize;
 
     //wait until previous operation will complete if any
-    waitForSurface();
+    waitForSurface(false);
 
     if (mMappedPixelBuffer) {
         gl->glBindBuffer(GL_PIXEL_UNPACK_BUFFER, mPixelBuffer);
@@ -447,36 +471,8 @@ void GLCairoSurface::mark_dirty()
             gl->glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
             mMappedPixelBuffer = nullptr;
             mPendingCopyToTexture = true;
-            performPendingCopy();
+            waitForSurface(true);
         }
         gl->glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     }
-}
-void GLCairoSurface::performPendingCopy()
-{
-    if (!mPendingCopyToTexture)
-        return;
-
-    if (mPixelCopySync)
-        waitForSurface();
-
-    auto gl = getGL();
-    GLuint texture = mTexture;
-    if (!texture) {
-        assert(mProxySurface);
-        assert(mProxySurface->mTexture);
-        texture = mProxySurface->mTexture;
-    }
-    gl->glPixelStorei(GL_PACK_ALIGNMENT, mPixelSize);
-    gl->glPixelStorei(GL_PACK_ROW_LENGTH, mWidth*mPixelSize);
-    gl->glBindTexture(GL_TEXTURE_2D, texture);
-    gl->glTexSubImage2D(GL_TEXTURE_2D, 0,
-                        mClipX1, mClipY1,
-                        mClipX2 - mClipX1, mClipY2 - mClipY1,
-                        mOformat, mComponentType,
-                        NULL);
-    gl->glBindTexture(GL_TEXTURE_2D, 0);
-
-    mPendingCopyToTexture = false;
-    mPixelCopySync = gl->glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 }

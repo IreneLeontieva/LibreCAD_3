@@ -1,4 +1,5 @@
 #include "glcairoitem.h"
+#include "glcairodraw.h"
 #include <cairo/cairo.h>
 
 class PRIVATE_API GLCairoSurface : public GLCairoItem {
@@ -30,7 +31,7 @@ public:
     int getStride() const { return mWidth*mPixelSize; }
     cairo_format_t getFormat() const { return mFormat; }
 
-    void            waitForSurface();
+    void            waitForSurface(bool full);
     unsigned char * get_data();
     void            mark_dirty();
     void            finish();
@@ -65,6 +66,9 @@ private:
     unsigned            mClipY2;
     bool                mClipEnabled;
 
-    bool                mPendingCopyToTexture = false;
-    void performPendingCopy();
+    //true if data was sent to gpu buffer but has not copyed to texture yet
+    bool                mPendingCopyToTexture;
+
+    //GLCairoDraw        *mPendingDraw;
+
 };
