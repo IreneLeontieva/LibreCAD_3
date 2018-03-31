@@ -30,11 +30,10 @@ public:
     int getStride() const { return mWidth*mPixelSize; }
     cairo_format_t getFormat() const { return mFormat; }
 
-    void            cairo_surface_flush();
+    void            waitForSurface();
     unsigned char * get_data();
     void            mark_dirty();
     void            finish();
-    void            waitForSurface();
 private:
     cairo_status_t      mStatus;        //cached status
     unsigned            mWidth;         //texture width;
