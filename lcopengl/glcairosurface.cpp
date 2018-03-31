@@ -4,6 +4,25 @@
 
 CAIRO_ITEM_IMPL(GLCairoSurface)
 
+int GLCairoSurface::stride_for_width(cairo_format_t fmt, int w) {
+    int ret;
+    switch(format) {
+    case CAIRO_FORMAT_A8:
+        ret = w;
+        break;
+    case CAIRO_FORMAT_RGB16_565:
+        ret = 2*w;
+        break;
+    case CAIRO_FORMAT_RGB24:
+    case CAIRO_FORMAT_ARGB32:
+    case CAIRO_FORMAT_RGB30:
+        ret = 4*w;
+        break;
+    default:
+        ret = 0;
+    }
+    return ret;
+}
 GLCairoSurface::GLCairoSurface(GLCairoContext *owner)
     : GLCairoItem(owner, type)
     , mStatus(CAIRO_STATUS_INVALID_FORMAT)
@@ -61,7 +80,6 @@ GLCairoSurface::GLCairoSurface(GLCairoContext *owner,
         mOformat       = GL_BGR;
         mComponentType = GL_UNSIGNED_SHORT_5_6_5;
         mPixelSize     = 2;
-        break;
         break;
     case CAIRO_FORMAT_RGB24:
         mContent       = CAIRO_CONTENT_COLOR;
