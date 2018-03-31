@@ -4,7 +4,7 @@
 class PRIVATE_API GLCairoSurface : public GLCairoItem {
 public:
     CAIRO_ITEM
-    static int stride_for_width(cairo_format_t fmt, int w);
+    static int stride_for_width(cairo_format_t format, int w);
 
     GLCairoSurface(GLCairoContext * owner); //constructs nil surface
     GLCairoSurface(GLCairoContext * owner,
@@ -24,6 +24,17 @@ public:
                    int height,
                    bool inmemory);
     ~GLCairoSurface();
+
+    int width() const { return mWidth; }
+    int height() const { return mHeight; }
+    int getStride() const { return mWidth*mPixelSize; }
+    cairo_format_t getFormat() const { return mFormat; }
+
+    void            cairo_surface_flush();
+    unsigned char * get_data();
+    void            mark_dirty();
+    void            finish();
+    void            waitForSurface();
 private:
     cairo_status_t      mStatus;        //cached status
     unsigned            mWidth;         //texture width;
@@ -54,4 +65,7 @@ private:
     unsigned            mClipX2;
     unsigned            mClipY2;
     bool                mClipEnabled;
+
+    bool                mPendingCopyToTexture = false;
+    void performPendingCopy();
 };

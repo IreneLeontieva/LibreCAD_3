@@ -189,7 +189,7 @@ class PRIVATE_API GLContext {
                         GLenum usage);
         DLL_IMPORT_FUNC(void *, glMapBuffer,
                         GLenum target,
-                        GLenum access);
+                        GLenum access);        
         DLL_IMPORT_FUNC(GLboolean, glUnmapBuffer,
                         GLenum target);
         DLL_CHECK_EXT(buffer_storage, 44);
@@ -198,6 +198,15 @@ class PRIVATE_API GLContext {
                         GLsizeiptr,
                         const GLvoid *,
                         GLbitfield);
+        DLL_IMPORT_FUNC(void *, glMapBufferRange,
+                        GLenum target,
+                        GLintptr offset,
+                        GLsizeiptr length,
+                        GLbitfield access);
+        DLL_IMPORT_FUNC(void, glFlushMappedBufferRange,
+                        GLenum target,
+                        GLintptr offset,
+                        GLsizeiptr length);
         DLL_CHECK_EXT(clear_buffer_object, 43);
         DLL_IMPORT_FUNC(void, glClearBufferData,
                         GLenum target,

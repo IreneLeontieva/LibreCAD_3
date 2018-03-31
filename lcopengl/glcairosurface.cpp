@@ -1,10 +1,11 @@
 #include "glcairosurface.h"
 #include "glcairoutil.h"
 #include <assert.h>
+#include <limits>
 
 CAIRO_ITEM_IMPL(GLCairoSurface)
 
-int GLCairoSurface::stride_for_width(cairo_format_t fmt, int w) {
+int GLCairoSurface::stride_for_width(cairo_format_t format, int w) {
     int ret;
     switch(format) {
     case CAIRO_FORMAT_A8:
@@ -57,7 +58,8 @@ GLCairoSurface::GLCairoSurface(GLCairoContext *owner,
 {
     auto gl = getGL();
 
-    if (w <= 0 || h <= 0) {
+    //we limit texture size to avoid overflows later
+    if (w <= 0 || h <= 0 || w > 16384 || h > 16384) {
         mStatus = CAIRO_STATUS_INVALID_SIZE;
         return;
     }
@@ -246,10 +248,20 @@ GLCairoSurface::GLCairoSurface(GLCairoSurface *other,
         if (pbo) {
             unsigned datasize = (x2 - x1)*(y2 - y1)*other->mPixelSize;
             gl->glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
-            gl->glBufferData(GL_PIXEL_PACK_BUFFER, datasize, NULL, GL_STREAM_COPY);
-
+            if (gl->buffer_storage)
+                gl->glBufferStorage(GL_PIXEL_PACK_BUFFER,
+                                    datasize,
+                                    NULL,
+                                    GL_MAP_READ_BIT|
+                                    GL_MAP_WRITE_BIT|
+                                    GL_MAP_PERSISTENT_BIT|
+                                    GL_CLIENT_STORAGE_BIT);
+            else
+                gl->glBufferData(GL_PIXEL_PACK_BUFFER, datasize, NULL, GL_STREAM_COPY);
             gl->glBindFramebuffer(GL_READ_FRAMEBUFFER, other->mFramebuffer);
             gl->glReadBuffer(GL_COLOR_ATTACHMENT0);
+            gl->glPixelStorei(GL_PACK_ALIGNMENT, mPixelSize);
+            gl->glPixelStorei(GL_PACK_ROW_LENGTH, mWidth*mPixelSize);
             gl->glReadPixels(x1, y1, x2-x1, y2-y1,
                              other->mOformat, other->mComponentType,
                              NULL);
@@ -291,21 +303,180 @@ GLCairoSurface::GLCairoSurface(GLCairoSurface *other,
 }
 GLCairoSurface::~GLCairoSurface()
 {
+    finish();
+}
+void GLCairoSurface::finish() {
+    if (mStatus == CAIRO_STATUS_SURFACE_FINISHED)
+        return;
     auto gl = getGL();
 
-    if (mFramebuffer)
-        gl->glDeleteFramebuffers(1, &mFramebuffer);
-    if (mTexture)
-        gl->glDeleteTextures(1, &mFramebuffer);
-    if (mPixelCopySync) gl->glDeleteSync(mPixelCopySync);
+    waitForSurface();
     if (mPixelBuffer) {
         if (mMappedPixelBuffer) {
             gl->glBindBuffer(GL_PIXEL_UNPACK_BUFFER, mPixelBuffer);
             gl->glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
             gl->glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+            mMappedPixelBuffer = NULL;
         }
         gl->glDeleteBuffers(1, &mPixelBuffer);
+        mPixelBuffer = 0;
     }
-    if (mProxySurface) mProxySurface->unref();
+    if (mFramebuffer) {
+        gl->glDeleteFramebuffers(1, &mFramebuffer);
+        mFramebuffer = 0;
+    }
+    if (mTexture) {
+        gl->glDeleteTextures(1, &mTexture);
+        mTexture = 0;
+    }
+    if (mProxySurface) {
+        mProxySurface->unref();
+        mProxySurface = nullptr;
+    }
+    mStatus = CAIRO_STATUS_SURFACE_FINISHED;
 }
+void GLCairoSurface::waitForSurface() {
+    if (mPixelCopySync) {
+        auto gl = getGL();
+        GLenum e = gl->glClientWaitSync(mPixelCopySync,
+                                        GL_SYNC_FLUSH_COMMANDS_BIT,
+                                        std::numeric_limits<GLuint64>::max()/2);
+        if (e != GL_ALREADY_SIGNALED && e != GL_CONDITION_SATISFIED)
+            gl->glFinish();
+        gl->glDeleteSync(mPixelCopySync);
+        mPixelCopySync = NULL;
+    }
+}
+unsigned char * GLCairoSurface::get_data()
+{
+    if (mStatus != CAIRO_STATUS_SUCCESS)
+        return nullptr;
 
+    auto gl = getGL();
+    gl->clearError();
+
+    unsigned datasize = mWidth*mHeight*mPixelSize;
+
+    if (!mPixelBuffer)
+    {
+        if (!mTexture || !mFramebuffer)
+            return nullptr;
+
+        GLuint pbo = 0;
+        gl->glGenBuffers(1, &pbo);
+        if (pbo) {
+            gl->glBindBuffer(GL_PIXEL_PACK_BUFFER, pbo);
+            if (gl->buffer_storage)
+                gl->glBufferStorage(GL_PIXEL_PACK_BUFFER,
+                                    datasize,
+                                    NULL,
+                                    GL_MAP_READ_BIT|
+                                    GL_MAP_WRITE_BIT|
+                                    GL_MAP_PERSISTENT_BIT|
+                                    GL_CLIENT_STORAGE_BIT);
+            else
+                gl->glBufferData(GL_PIXEL_PACK_BUFFER, datasize, NULL, GL_STREAM_COPY);
+
+            gl->glBindFramebuffer(GL_READ_FRAMEBUFFER, mFramebuffer);
+            gl->glReadBuffer(GL_COLOR_ATTACHMENT0);
+            gl->glPixelStorei(GL_PACK_ALIGNMENT, mPixelSize);
+            gl->glPixelStorei(GL_PACK_ROW_LENGTH, mWidth*mPixelSize);
+            gl->glReadPixels(0, 0, mWidth, mHeight,
+                             mOformat, mComponentType,
+                             NULL);
+            gl->glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+            gl->glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+
+            if (gl->checkError()) {
+                gl->glDeleteBuffers(1, &pbo);
+                return nullptr;
+            }
+        }
+        mPixelBuffer = pbo;
+    }
+
+    if (gl->checkError()) {
+        return nullptr;
+    }
+
+    //if there was a pending pixel copy, wait for the surface
+    waitForSurface();
+
+    if (gl->checkError()) {
+        return nullptr;
+    }
+
+    if (!mMappedPixelBuffer) {
+        assert(mPixelBuffer);
+        gl->glBindBuffer(GL_PIXEL_PACK_BUFFER, mPixelBuffer);
+        if (gl->buffer_storage) {
+            mMappedPixelBuffer = gl->glMapBufferRange(GL_PIXEL_PACK_BUFFER,
+                                                      0, datasize,
+                                                      GL_MAP_READ_BIT|
+                                                      GL_MAP_WRITE_BIT|
+                                                      GL_MAP_PERSISTENT_BIT|
+                                                      GL_MAP_UNSYNCHRONIZED_BIT|
+                                                      GL_MAP_FLUSH_EXPLICIT_BIT);
+        } else {
+            mMappedPixelBuffer = gl->glMapBuffer(GL_PIXEL_PACK_BUFFER, GL_READ_WRITE);
+        }
+        gl->glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    }
+    if (gl->checkError()) {
+        return nullptr;
+    }
+    return (unsigned char*)mMappedPixelBuffer;
+}
+void GLCairoSurface::mark_dirty()
+{
+    auto gl = getGL();
+    gl->clearError();
+
+    unsigned datasize = mWidth*mHeight*mPixelSize;
+
+    //wait until previous operation will complete if any
+    waitForSurface();
+
+    if (mMappedPixelBuffer) {
+        gl->glBindBuffer(GL_PIXEL_UNPACK_BUFFER, mPixelBuffer);
+        if (gl->buffer_storage) {
+            gl->glFlushMappedBufferRange(GL_PIXEL_UNPACK_BUFFER, 0, datasize);
+            mPixelCopySync = gl->glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+            mPendingCopyToTexture = true;
+        } else {
+            gl->glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+            mMappedPixelBuffer = nullptr;
+            mPendingCopyToTexture = true;
+            performPendingCopy();
+        }
+        gl->glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+    }
+}
+void GLCairoSurface::performPendingCopy()
+{
+    if (!mPendingCopyToTexture)
+        return;
+
+    if (mPixelCopySync)
+        waitForSurface();
+
+    auto gl = getGL();
+    GLuint texture = mTexture;
+    if (!texture) {
+        assert(mProxySurface);
+        assert(mProxySurface->mTexture);
+        texture = mProxySurface->mTexture;
+    }
+    gl->glPixelStorei(GL_PACK_ALIGNMENT, mPixelSize);
+    gl->glPixelStorei(GL_PACK_ROW_LENGTH, mWidth*mPixelSize);
+    gl->glBindTexture(GL_TEXTURE_2D, texture);
+    gl->glTexSubImage2D(GL_TEXTURE_2D, 0,
+                        mClipX1, mClipY1,
+                        mClipX2 - mClipX1, mClipY2 - mClipY1,
+                        mOformat, mComponentType,
+                        NULL);
+    gl->glBindTexture(GL_TEXTURE_2D, 0);
+
+    mPendingCopyToTexture = false;
+    mPixelCopySync = gl->glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+}
